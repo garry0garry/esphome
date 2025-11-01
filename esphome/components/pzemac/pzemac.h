@@ -37,6 +37,9 @@ class PZEMAC : public PollingComponent, public modbus::ModbusDevice {
   sensor::Sensor *power_factor_sensor_{nullptr};
 
   void reset_energy_();
+  
+  uint32_t last_update_time_;
+  float last_energy_sensor;
 };
 
 template<typename... Ts> class ResetEnergyAction : public Action<Ts...> {
