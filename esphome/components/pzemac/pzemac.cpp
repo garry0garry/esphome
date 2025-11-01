@@ -6,16 +6,16 @@ namespace pzemac {
 
 static const char *const TAG = "pzemac";
 
-static const uint8_t PZEM_CMD_READ_IN_REGISTERS = 0x04;
-static const uint8_t PZEM_CMD_RESET_ENERGY = 0x42;
-static const uint8_t PZEM_REGISTER_COUNT = 10;  // 10x 16-bit registers
+static const uint8_t PZEpre_CMD_READ_IN_REGISTERS = 0x04;
+static const uint8_t PZEpre_CMD_RESET_ENERGY = 0x42;
+static const uint8_t PZEpre_REGISTER_COUNT = 10;  // 10x 16-bit registers
 
 void PZEMAC::on_modbus_data(const std::vector<uint8_t> &data) {
   if (data.size() < 20) {
     ESP_LOGW(TAG, "Invalid size for PZEM AC!");
     return;
   }
-  this->m_last_update_time_ = millis();
+  this->pre_last_update_time_ = millis();
 
   // See https://github.com/esphome/feature-requests/issues/49#issuecomment-538636809
   //  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
@@ -23,35 +23,35 @@ void PZEMAC::on_modbus_data(const std::vector<uint8_t> &data) {
   // Id Cc Sz Volt- Current---- Power------ Energy----- Frequ PFact Alarm Crc--
   //           0     2           6          10          14    16
 
-  auto pzem_get_16bit = [&](size_t i) -> uint16_t {
+  auto pzepre_get_16bit = [&](size_t i) -> uint16_t {
     return (uint16_t(data[i + 0]) << 8) | (uint16_t(data[i + 1]) << 0);
   };
-  auto pzem_get_32bit = [&](size_t i) -> uint32_t {
-    return (uint32_t(pzem_get_16bit(i + 2)) << 16) | (uint32_t(pzem_get_16bit(i + 0)) << 0);
+  auto pzepre_get_32bit = [&](size_t i) -> uint32_t {
+    return (uint32_t(pzepre_get_16bit(i + 2)) << 16) | (uint32_t(pzepre_get_16bit(i + 0)) << 0);
   };
 
-  uint16_t raw_voltage = pzem_get_16bit(0);
+  uint16_t raw_voltage = pzepre_get_16bit(0);
   float voltage = raw_voltage / 10.0f;  // max 6553.5 V
 
-  uint32_t raw_current = pzem_get_32bit(2);
+  uint32_t raw_current = pzepre_get_32bit(2);
   float current = raw_current / 1000.0f;  // max 4294967.295 A
 
-  uint32_t raw_active_power = pzem_get_32bit(6);
+  uint32_t raw_active_power = pzepre_get_32bit(6);
   float active_power = raw_active_power / 10.0f;  // max 429496729.5 W
 
-  float active_energy = static_cast<float>(pzem_get_32bit(10));
+  float active_energy = static_cast<float>(pzepre_get_32bit(10));
 
-  uint16_t raw_frequency = pzem_get_16bit(14);
+  uint16_t raw_frequency = pzepre_get_16bit(14);
   float frequency = raw_frequency / 10.0f;
 
-  uint16_t raw_power_factor = pzem_get_16bit(16);
+  uint16_t raw_power_factor = pzepre_get_16bit(16);
   float power_factor = raw_power_factor / 100.0f;
 
   ESP_LOGD(TAG,
            "PZEM AC: Addr 0x%02X, V=%.1f V, I=%.3f A, P=%.1f W, E=%.1f Wh, E(pre)=%.1f Wh, E-E(pre)=%.1f Wh, F=%.1f "
            "Hz, PF=%.2f",
-           int(this->address_), voltage, current, active_power, active_energy, this->m_last_energy_sensor,
-           active_energy - this->m_last_energy_sensor, frequency, power_factor);
+           int(this->address_), voltage, current, active_power, active_energy, this->pre_last_energy_sensor,
+           active_energy - this->pre_last_energy_sensor, frequency, power_factor);
   if (this->voltage_sensor_ != nullptr) {
     if (voltage < 450) {
       this->voltage_sensor_->publish_state(voltage);
@@ -74,15 +74,15 @@ void PZEMAC::on_modbus_data(const std::vector<uint8_t> &data) {
     }
   }
   if (this->energy_sensor_ != nullptr) {
-    if (this->m_last_energy_sensor == 0) {
+    if (this->pre_last_energy_sensor == 0) {
       this->energy_sensor_->publish_state(active_energy);
-      this->m_last_energy_sensor = active_energy;
+      this->pre_last_energy_sensor = active_energy;
     } else {
-      if (abs(active_energy - this->m_last_energy_sensor) < 1000) {
+      if (abs(active_energy - this->pre_last_energy_sensor) < 1000) {
         this->energy_sensor_->publish_state(active_energy);
-        this->m_last_energy_sensor = active_energy;
+        this->pre_last_energy_sensor = active_energy;
       } else {
-        this->energy_sensor_->publish_state(this->m_last_energy_sensor);
+        this->energy_sensor_->publish_state(this->pre_last_energy_sensor);
       }
     }
   }
@@ -95,10 +95,10 @@ void PZEMAC::on_modbus_data(const std::vector<uint8_t> &data) {
 }
 
 void PZEMAC::update() {
-  this->send(PZEM_CMD_READ_IN_REGISTERS, 0, PZEM_REGISTER_COUNT);
+  this->send(PZEpre_CMD_READ_IN_REGISTERS, 0, PZEpre_REGISTER_COUNT);
 
   if (this->get_update_interval() != SCHEDULER_DONT_RUN &&
-      (millis() - this->m_last_update_time_) > this->get_update_interval() * 2) {
+      (millis() - this->pre_last_update_time_) > this->get_update_interval() * 2) {
     ESP_LOGE(TAG, "PZEM AC Addr 0x%02X: Timeout!!!", int(this->address_));
     if (this->voltage_sensor_ != nullptr) {
       this->voltage_sensor_->publish_state(0.0f);
@@ -110,7 +110,7 @@ void PZEMAC::update() {
       this->power_sensor_->publish_state(0.0f);
     }
     if (this->energy_sensor_ != nullptr) {
-      this->energy_sensor_->publish_state(this->m_last_energy_sensor);
+      this->energy_sensor_->publish_state(this->pre_last_energy_sensor);
     }
     if (this->frequency_sensor_ != nullptr) {
       this->frequency_sensor_->publish_state(0.0f);
@@ -135,7 +135,7 @@ void PZEMAC::dump_config() {
 void PZEMAC::reset_energy_() {
   std::vector<uint8_t> cmd;
   cmd.push_back(this->address_);
-  cmd.push_back(PZEM_CMD_RESET_ENERGY);
+  cmd.push_back(PZEpre_CMD_RESET_ENERGY);
   this->send_raw(cmd);
 }
 
