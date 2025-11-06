@@ -15,7 +15,7 @@ void PZEMAC::on_modbus_data(const std::vector<uint8_t> &data) {
     ESP_LOGW(TAG, "Invalid size for PZEM AC!");
     return;
   }
-  this->lastupdatetime_ = millis();
+  this->last_update_time_ = millis();
 
   // See https://github.com/esphome/feature-requests/issues/49#issuecomment-538636809
   //  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
@@ -50,8 +50,8 @@ void PZEMAC::on_modbus_data(const std::vector<uint8_t> &data) {
   ESP_LOGD(TAG,
            "PZEM AC: Addr 0x%02X, V=%.1f V, I=%.3f A, P=%.1f W, E=%.1f Wh, E(pre)=%.1f Wh, E-E(pre)=%.1f Wh, F=%.1f "
            "Hz, PF=%.2f",
-           int(this->address_), voltage, current, active_power, active_energy, this->lastenergysensor_,
-           active_energy - this->lastenergysensor_, frequency, power_factor);
+           int(this->address_), voltage, current, active_power, active_energy, this->last_energy_sensor_,
+           active_energy - this->last_energy_sensor_, frequency, power_factor);
   if (this->voltage_sensor_ != nullptr) {
     if (voltage < 450) {
       this->voltage_sensor_->publish_state(voltage);
@@ -74,15 +74,15 @@ void PZEMAC::on_modbus_data(const std::vector<uint8_t> &data) {
     }
   }
   if (this->energy_sensor_ != nullptr) {
-    if (this->lastenergysensor_ == 0) {
+    if (this->last_energy_sensor_ == 0) {
       this->energy_sensor_->publish_state(active_energy);
-      this->lastenergysensor_ = active_energy;
+      this->last_energy_sensor_ = active_energy;
     } else {
-      if (abs(active_energy - this->lastenergysensor_) < 1000) {
+      if (abs(active_energy - this->last_energy_sensor_) < 1000) {
         this->energy_sensor_->publish_state(active_energy);
-        this->lastenergysensor_ = active_energy;
+        this->last_energy_sensor_ = active_energy;
       } else {
-        this->energy_sensor_->publish_state(this->lastenergysensor_);
+        this->energy_sensor_->publish_state(this->last_energy_sensor_);
       }
     }
   }
@@ -98,7 +98,7 @@ void PZEMAC::update() {
   this->send(PZEM_CMD_READ_IN_REGISTERS, 0, PZEM_REGISTER_COUNT);
 
   if (this->get_update_interval() != SCHEDULER_DONT_RUN &&
-      (millis() - this->lastupdatetime_) > this->get_update_interval() * 2) {
+      (millis() - this->last_update_time_) > this->get_update_interval() * 2) {
     ESP_LOGE(TAG, "PZEM AC Addr 0x%02X: Timeout!!!", int(this->address_));
     if (this->voltage_sensor_ != nullptr) {
       this->voltage_sensor_->publish_state(0.0f);
@@ -110,7 +110,7 @@ void PZEMAC::update() {
       this->power_sensor_->publish_state(0.0f);
     }
     if (this->energy_sensor_ != nullptr) {
-      this->energy_sensor_->publish_state(this->lastenergysensor_);
+      this->energy_sensor_->publish_state(this->last_energy_sensor_);
     }
     if (this->frequency_sensor_ != nullptr) {
       this->frequency_sensor_->publish_state(0.0f);
