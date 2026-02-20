@@ -55,23 +55,17 @@ void PZEMAC::on_modbus_data(const std::vector<uint8_t> &data) {
   if (this->voltage_sensor_ != nullptr) {
     if (voltage < 450) {
       this->voltage_sensor_->publish_state(voltage);
-    } /* else {
-      this->voltage_sensor_->publish_state(220.0f);
-    } */
+    } 
   }
   if (this->current_sensor_ != nullptr) {
     if (current < 150) {
       this->current_sensor_->publish_state(current);
-    } /* else {
-      this->current_sensor_->publish_state(1.0f);
-    } */
+    } 
   }
   if (this->power_sensor_ != nullptr) {
     if (active_power < 16000) {
       this->power_sensor_->publish_state(active_power);
-    } /* else {
-      this->power_sensor_->publish_state(101.0f);
-    } */
+    } 
   }
   if (this->energy_sensor_ != nullptr) {
     if (this->last_energy_sensor_ == 0) {
